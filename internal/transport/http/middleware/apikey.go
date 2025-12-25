@@ -18,6 +18,12 @@ func APIKeyAuth(next http.Handler) http.Handler {
 			return
 		}
 
+		// Skip auth for admin dashboard and static files
+		if r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Skip auth for docs
 		if strings.HasPrefix(r.URL.Path, "/docs") {
 			next.ServeHTTP(w, r)

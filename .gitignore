@@ -1,0 +1,42 @@
+# Binaries
+api
+api.exe
+api-linux
+*.exe
+
+# Environment files (contains secrets!)
+.env
+.env.local
+.env.production
+
+# Database files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Deploy packages
+deploy-package/
+*.zip
+*.tar
+*.tar.gz
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage.out
+*.cover
+
+# Vendor (optional - uncomment if not committing vendor)
+# vendor/

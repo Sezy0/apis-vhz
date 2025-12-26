@@ -67,9 +67,9 @@ func (r *MySQLKeyAccountRepository) GetKeyAccountInfo(ctx context.Context, keyAc
 		SELECT 
 			ka.id, ka.roblox_user_id, ka.roblox_username, ka.hwid,
 			ka.is_active, ka.is_online, ka.last_heartbeat_at,
-			k.key as license_key, k.status as key_status
+			k.` + "`key`" + ` as license_key, k.status as key_status
 		FROM key_accounts ka
-		JOIN keys k ON ka.key_id = k.id
+		JOIN ` + "`keys`" + ` k ON ka.key_id = k.id
 		WHERE ka.id = ?`
 	
 	var (
@@ -131,8 +131,8 @@ func (r *MySQLKeyAccountRepository) ValidateKeyAndHWID(ctx context.Context, key,
 			ka.hwid,
 			k.status as key_status
 		FROM key_accounts ka
-		JOIN keys k ON ka.key_id = k.id
-		WHERE k.key = ?
+		JOIN ` + "`keys`" + ` k ON ka.key_id = k.id
+		WHERE k.` + "`key`" + ` = ?
 		  AND ka.roblox_user_id = ?
 		  AND ka.is_active = 1
 		  AND k.status = 'active'

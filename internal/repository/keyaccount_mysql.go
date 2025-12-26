@@ -122,6 +122,9 @@ type KeyAccountValidation struct {
 // ValidateKeyAndHWID validates a key+hwid+roblox_id combination for token generation.
 // Returns key_account details if valid, error otherwise.
 func (r *MySQLKeyAccountRepository) ValidateKeyAndHWID(ctx context.Context, key, hwid, robloxUserID string) (*KeyAccountValidation, error) {
+	// DEBUG LOG
+	fmt.Printf("[AUTH DEBUG] Validating - Key: %s, RobloxID: %s, HWID: %s\n", key, robloxUserID, hwid)
+
 	query := `
 		SELECT 
 			ka.id as key_account_id,
@@ -135,7 +138,7 @@ func (r *MySQLKeyAccountRepository) ValidateKeyAndHWID(ctx context.Context, key,
 		WHERE k.` + "`key`" + ` = ?
 		  AND ka.roblox_user_id = ?
 		  AND ka.is_active = 1
-		  AND k.status = 'active'
+		  AND LOWER(k.status) = 'active'
 		LIMIT 1`
 	
 	var result KeyAccountValidation

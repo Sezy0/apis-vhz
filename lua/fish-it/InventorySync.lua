@@ -622,9 +622,81 @@ function InventorySync.SetToken(token)
     Config.Token = token
 end
 
--- Deprecated: Use SetToken instead for security
+-- Login with License Key (Auto-fetches Token)
+function InventorySync.Login(licenseKey, manualHwid)
+    local hwid = manualHwid
+    
+    -- Try to get HWID from executor if not provided
+    if not hwid and gethwid then
+        hwid = gethwid()
+    end
+    
+    -- Fallback/Validate HWID
+    if not hwid then
+        warn("[InventorySync] Warning: No HWID found. Using placeholder 'unknown-hwid'")
+        hwid = "unknown-hwid"
+    end
+
+    local url = Config.APIBase .. "/auth/token"
+    local body = HttpService:JSONEncode({
+        key = licenseKey,
+        hwid = hwid,
+        roblox_id = RobloxUserId
+    })
+    
+    if Config.Debug then
+        print("[InventorySync] Logging in with Key:", licenseKey, "HWID:", hwid)
+    end
+
+    local requestData = {
+        Url = url,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json"
+        },
+        Body = body
+    }
+    
+    -- Find available HTTP request function
+    local httpFunc = (syn and syn.request) 
+        or request 
+        or http_request 
+        or (http and http.request)
+        
+    if not httpFunc then
+        warn("[InventorySync] Login Failed: No HTTP function available")
+        return false
+    end
+    
+    local success, response = pcall(httpFunc, requestData)
+    
+    if success and response.StatusCode == 200 then
+        local data = HttpService:JSONDecode(response.Body)
+        if data and data.token then
+            Config.Token = data.token
+            if Config.Debug then
+                print("[InventorySync] Login Successful! Token expires in:", data.expires_in)
+            end
+            return true
+        else
+            warn("[InventorySync] Login Failed: Invalid response format")
+        end
+    else
+        local body = response and response.Body or "Unknown Error"
+        -- Check if body is HTML (Cloudflare error, etc)
+        if type(body) == "string" and (body:match("^%s*<!doctype") or body:match("^%s*<html") or body:match("Cloudflare")) then
+            warn(string.format("[InventorySync] Login Failed: Server Error %s (Cloudflare/Gateway Error)", tostring(response and response.StatusCode or "Unknown")))
+        else
+            warn("[InventorySync] Login Failed:", body)
+        end
+    end
+    return false
+end
+
+-- Deprecated: Use Login(key) or SetToken(token)
 function InventorySync.SetAPIKey(key)
-    warn("[InventorySync] SetAPIKey is deprecated. Use SetToken() instead.")
+    warn("[InventorySync] SetAPIKey is deprecated. Attempting auto-login...")
+    InventorySync.Login(key)
 end
 
 function InventorySync.SetAPIBase(url)

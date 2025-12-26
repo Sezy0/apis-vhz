@@ -18,7 +18,9 @@ import (
 	"vinzhub-rest-api/internal/service"
 	httpTransport "vinzhub-rest-api/internal/transport/http"
 	"vinzhub-rest-api/internal/transport/http/handler"
+	"vinzhub-rest-api/internal/transport/http/middleware"
 
+	"github.com/redis/go-redis/v9"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -136,7 +138,26 @@ func main() {
 	// Admin handler for stats dashboard
 	adminHandler := handler.NewAdminHandler(redisBuffer, sqliteRepo)
 
-	router := httpTransport.NewRouter(httpHandler, invHandler, adminHandler)
+	// Token service for session auth (uses same Redis connection)
+	var authHandler *handler.AuthHandler
+	redisForTokens := redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "",
+		DB:       2, // Use different DB from buffer
+	})
+	tokenService := service.NewTokenService(redisForTokens)
+	middleware.SetTokenService(tokenService)
+	
+	// Auth handler requires MySQL key_accounts repo
+	if mainDB != nil {
+		mysqlKeyRepo := repository.NewMySQLKeyAccountRepository(mainDB)
+		authHandler = handler.NewAuthHandler(tokenService, mysqlKeyRepo)
+		log.Println("✓ Token auth enabled (Redis DB=2)")
+	} else {
+		log.Println("⚠ Token auth disabled (no MySQL connection)")
+	}
+
+	router := httpTransport.NewRouter(httpHandler, invHandler, adminHandler, authHandler)
 
 	// Configure HTTP server
 	server := &http.Server{
@@ -151,6 +172,7 @@ func main() {
 		log.Printf("HTTP server listening on %s", cfg.Server.Address())
 		log.Println("Available endpoints:")
 		log.Println("  GET  /api/v1/health")
+		log.Println("  POST /api/v1/auth/token (Get session token)")
 		log.Println("  POST /api/v1/inventory/{roblox_user_id}/sync")
 		log.Println("  GET  /api/v1/inventory/{roblox_user_id}")
 		log.Println("  GET  /api/v1/admin/stats")

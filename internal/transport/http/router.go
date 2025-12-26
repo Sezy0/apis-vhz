@@ -11,8 +11,20 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router.
+// authHandler is optional - pass nil if not using token auth.
 func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHandler *handler.AdminHandler, authHandler *handler.AuthHandler) *chi.Mux {
+	return newRouterInternal(h, invHandler, adminHandler, authHandler)
+}
+
+// NewRouterLegacy is backward-compatible for old main.go that doesn't have authHandler.
+// Deprecated: Use NewRouter with authHandler=nil instead.
+func NewRouterLegacy(h *handler.Handler, invHandler *handler.InventoryHandler, adminHandler *handler.AdminHandler) *chi.Mux {
+	return newRouterInternal(h, invHandler, adminHandler, nil)
+}
+
+func newRouterInternal(h *handler.Handler, invHandler *handler.InventoryHandler, adminHandler *handler.AdminHandler, authHandler *handler.AuthHandler) *chi.Mux {
 	r := chi.NewRouter()
+
 
 	// Global middleware stack
 	r.Use(middleware.Recovery)

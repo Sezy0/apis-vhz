@@ -108,3 +108,69 @@ func (r *MySQLKeyAccountRepository) GetKeyAccountInfo(ctx context.Context, keyAc
 	
 	return result, nil
 }
+
+// KeyAccountValidation contains the result of key+hwid validation.
+type KeyAccountValidation struct {
+	KeyAccountID   int64
+	KeyID          int64
+	RobloxUserID   string
+	RobloxUsername string
+	HWID           string
+	KeyStatus      string
+}
+
+// ValidateKeyAndHWID validates a key+hwid+roblox_id combination for token generation.
+// Returns key_account details if valid, error otherwise.
+func (r *MySQLKeyAccountRepository) ValidateKeyAndHWID(ctx context.Context, key, hwid, robloxUserID string) (*KeyAccountValidation, error) {
+	query := `
+		SELECT 
+			ka.id as key_account_id,
+			ka.key_id,
+			ka.roblox_user_id,
+			ka.roblox_username,
+			ka.hwid,
+			k.status as key_status
+		FROM key_accounts ka
+		JOIN keys k ON ka.key_id = k.id
+		WHERE k.key = ?
+		  AND ka.roblox_user_id = ?
+		  AND ka.is_active = 1
+		  AND k.status = 'active'
+		LIMIT 1`
+	
+	var result KeyAccountValidation
+	err := r.db.QueryRowContext(ctx, query, key, robloxUserID).Scan(
+		&result.KeyAccountID,
+		&result.KeyID,
+		&result.RobloxUserID,
+		&result.RobloxUsername,
+		&result.HWID,
+		&result.KeyStatus,
+	)
+	
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("invalid key or account not found")
+		}
+		return nil, fmt.Errorf("failed to validate key: %w", err)
+	}
+	
+	// Validate HWID if already set (not empty)
+	if result.HWID != "" && result.HWID != hwid {
+		return nil, fmt.Errorf("hwid mismatch")
+	}
+	
+	// Update HWID if not set yet
+	if result.HWID == "" && hwid != "" {
+		updateQuery := `UPDATE key_accounts SET hwid = ? WHERE id = ?`
+		_, err = r.db.ExecContext(ctx, updateQuery, hwid, result.KeyAccountID)
+		if err != nil {
+			// Log but don't fail - HWID update is not critical
+			fmt.Printf("[KeyAccount] Failed to update HWID: %v\n", err)
+		}
+		result.HWID = hwid
+	}
+	
+	return &result, nil
+}
+

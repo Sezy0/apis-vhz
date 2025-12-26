@@ -27,11 +27,34 @@ local InventorySync = {}
 
 local Config = {
     APIBase = "https://sandbox.vinzhub.com/api/v1",
-    APIKey = "vinzhub_sk_live_8f7g6h5j4k3l2m1n0p9o",
+    Token = nil,            -- Session token (set via SetToken())
     SyncInterval = 300,     -- Seconds between auto-sync (5 min to reduce DB load)
     Debug = false,          -- Enable debug logging
     FetchIcons = true,      -- Fetch fish icons from Roblox API
+    
+    -- Tier filter: Only sync fish at or above this tier
+    -- 1=Common, 2=Uncommon, 3=Rare, 4=Epic, 5=Legendary, 6=Mythical, 7=Secret, 8=Exotic
+    MinTierToSync = 5,      -- 5 = Legendary and above only
 }
+
+
+-- Tier names for reference
+local TierOrder = {
+    ["Common"] = 1,
+    ["Uncommon"] = 2,
+    ["Rare"] = 3,
+    ["Epic"] = 4,
+    ["Legendary"] = 5,
+    ["Mythical"] = 6,
+    ["Secret"] = 7,
+    ["Exotic"] = 8,
+}
+
+local function GetTierNumber(tierName)
+    if type(tierName) == "number" then return tierName end
+    return TierOrder[tierName] or 0
+end
+
 
 --------------------------------------------------------------------------------
 -- SERVICES
@@ -48,9 +71,20 @@ local RobloxUserId = tostring(Player.UserId)
 -- STATE
 --------------------------------------------------------------------------------
 
+-- Singleton protection: If script is executed multiple times, only first runs
+local SINGLETON_KEY = "_VINZHUB_INVENTORY_SYNC_INSTANCE"
+if _G[SINGLETON_KEY] then
+    if Config.Debug then
+        warn("[InventorySync] Already running, skipping duplicate execution")
+    end
+    return _G[SINGLETON_KEY]  -- Return existing instance
+end
+
 local SyncRunning = false
+local AutoSyncStarted = false  -- Prevent multiple auto-sync loops
 local LastSync = 0
 local IconCache = {}  -- Cache for icon URLs to avoid repeated API calls
+
 
 --------------------------------------------------------------------------------
 -- GAME MODULES (lazy loaded)
@@ -87,6 +121,12 @@ end
 --------------------------------------------------------------------------------
 
 local function Request(method, endpoint, body)
+    -- Validate token is set
+    if not Config.Token then
+        if Config.Debug then warn("[InventorySync] No token set! Call SetToken() first.") end
+        return false, "Token not set"
+    end
+    
     local url = Config.APIBase .. endpoint
     
     if Config.Debug then 
@@ -95,8 +135,9 @@ local function Request(method, endpoint, body)
     
     local headers = {
         ["Content-Type"] = "application/json",
-        ["X-API-Key"] = Config.APIKey
+        ["X-Token"] = Config.Token  -- Use session token instead of API key
     }
+
     
     local requestData = {
         Url = url,
@@ -369,8 +410,12 @@ local function CollectInventoryData()
                     }
                     
                     if itemType == "Fish" then
-                        itemData.fish_id = item.Id
-                        table.insert(data.fish, itemData)
+                        -- Filter: Only sync fish at or above MinTierToSync
+                        local tierNum = GetTierNumber(details.tier)
+                        if tierNum >= Config.MinTierToSync then
+                            itemData.fish_id = item.Id
+                            table.insert(data.fish, itemData)
+                        end
                     elseif itemType == "Enchant Stones" or itemType == "Enchant Stone" or (details.name and details.name:find("Enchant")) then
                         itemData.stone_id = item.Id
                         table.insert(data.stones, itemData)
@@ -541,6 +586,15 @@ function InventorySync.Sync()
 end
 
 function InventorySync.StartAutoSync()
+    -- Prevent multiple auto-sync loops
+    if AutoSyncStarted then
+        if Config.Debug then
+            warn("[InventorySync] AutoSync already running, ignoring duplicate call")
+        end
+        return
+    end
+    AutoSyncStarted = true
+    
     task.spawn(function()
         task.wait(5)  -- Initial delay
         InventorySync.Sync()
@@ -564,8 +618,13 @@ end
 -- CONFIGURATION API
 --------------------------------------------------------------------------------
 
+function InventorySync.SetToken(token)
+    Config.Token = token
+end
+
+-- Deprecated: Use SetToken instead for security
 function InventorySync.SetAPIKey(key)
-    Config.APIKey = key
+    warn("[InventorySync] SetAPIKey is deprecated. Use SetToken() instead.")
 end
 
 function InventorySync.SetAPIBase(url)
@@ -584,15 +643,31 @@ function InventorySync.EnableIcons(enabled)
     Config.FetchIcons = enabled
 end
 
+function InventorySync.SetMinTier(tier)
+    Config.MinTierToSync = tier
+end
+
 --------------------------------------------------------------------------------
 -- INITIALIZATION
 --------------------------------------------------------------------------------
 
 function InventorySync.Init()
+    -- Validate token is set
+    if not Config.Token then
+        warn("[InventorySync] ERROR: Token not set! Call SetToken(token) before Init().")
+        warn("[InventorySync] Get token from: POST /auth/token {key, hwid, roblox_id}")
+        return false
+    end
+    
     if Config.Debug then
-        print("[InventorySync] v2.0 initialized for user:", RobloxUserId)
+        print("[InventorySync] v3.0 initialized for user:", RobloxUserId)
     end
     InventorySync.StartAutoSync()
+    return true
 end
 
+-- Register singleton before returning
+_G[SINGLETON_KEY] = InventorySync
+
 return InventorySync
+

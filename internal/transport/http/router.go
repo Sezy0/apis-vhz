@@ -11,7 +11,7 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router.
-func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHandler *handler.AdminHandler) *chi.Mux {
+func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHandler *handler.AdminHandler, authHandler *handler.AuthHandler) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware stack
@@ -21,13 +21,13 @@ func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHa
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"}, // Configure for production
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID", "X-API-Key"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID", "X-API-Key", "X-Token"},
 		ExposedHeaders:   []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
-	// API Key authentication (skip for health checks)
+	// API Key/Token authentication (skip for health checks and auth endpoints)
 	r.Use(middleware.APIKeyAuth)
 
 	// API v1 routes
@@ -35,6 +35,15 @@ func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHa
 		// Health check endpoints (no auth required)
 		r.Get("/health", h.Health)
 		r.Get("/ready", h.Ready)
+
+		// Auth endpoints (token generation doesn't require auth)
+		if authHandler != nil {
+			r.Route("/auth", func(r chi.Router) {
+				r.Post("/token", authHandler.GenerateToken)
+				r.Post("/revoke", authHandler.RevokeToken)
+				r.Post("/refresh", authHandler.RefreshToken)
+			})
+		}
 
 		// Inventory endpoints
 		if invHandler != nil {
@@ -64,3 +73,4 @@ func NewRouter(h *handler.Handler, invHandler *handler.InventoryHandler, adminHa
 
 	return r
 }
+
